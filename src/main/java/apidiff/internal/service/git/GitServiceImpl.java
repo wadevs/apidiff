@@ -122,7 +122,20 @@ public class GitServiceImpl implements GitService {
 			repository = git.getRepository();
 		}
 		this.logger.info("Process " + projectName  + " finish.");
+		deleteIndexLock(repository);
 		return repository;
+	}
+
+	private void deleteIndexLock(Repository repository) {
+		File indexLockFile = new File(repository.getDirectory(), "index.lock");
+
+		// Check if the index.lock file exists
+		if (indexLockFile.exists()) {
+			// Attempt to delete the index.lock file
+			if (indexLockFile.delete()) {
+				this.logger.warn("Git index.lock file deleted");
+			}
+		}
 	}
 	
 	@Override
