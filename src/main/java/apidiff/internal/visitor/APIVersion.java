@@ -7,6 +7,7 @@ import java.util.Hashtable;
 import java.util.List;
 import java.util.Map;
 
+import apidiff.util.UtilFile;
 import org.eclipse.jdt.core.JavaCore;
 import org.eclipse.jdt.core.dom.AST;
 import org.eclipse.jdt.core.dom.ASTParser;
@@ -47,8 +48,8 @@ public class APIVersion {
 			this.classifierAPI = classifierAPI;
 			this.mapModifications = mapModifications;
 			this.path = path;
-			this.nameProject = file.getAbsolutePath().replaceAll(this.path + "/", "");
-	    	String prefix = file.getAbsolutePath() + "/";
+			this.nameProject = UtilFile.getAbsolutePath(file).replaceAll(UtilFile.getAbsolutePath(this.path) + "/", "");
+	    	String prefix = UtilFile.getAbsolutePath(file) + "/";
 			for(ChangeType changeType : this.mapModifications.keySet()){
 				for(GitFile gitFile: mapModifications.get(changeType)){
 					if(gitFile.getPathOld()!= null){
@@ -61,7 +62,7 @@ public class APIVersion {
 			}
 			this.parseFilesInDir(file, false);
 		} catch (IOException e) {
-			this.logger.error("Erro ao criar APIVersion", e);
+			this.logger.error("Error creating APIVersion", e);
 		}
 	}
 	
@@ -78,10 +79,14 @@ public class APIVersion {
 	}
 
 	public void parseFilesInDir(File file, final Boolean ignoreTreeDiff) throws IOException {
+		if (file.getName().equals(".git")) {
+			return; // filter Git folder
+		}
+
 		if (file.isFile()) {
-			String simpleNameFile = UtilTools.getSimpleNameFileWithouPackageWithNameLibrary(this.path, file.getAbsolutePath(), this.nameProject);
+			String simpleNameFile = UtilTools.getSimpleNameFileWithouPackageWithNameLibrary(this.path, UtilFile.getAbsolutePath(file), this.nameProject);
 			if (UtilTools.isJavaFile(file.getName()) && this.isFileModification(file, ignoreTreeDiff) && UtilTools.isAPIByClassifier(simpleNameFile, this.classifierAPI)) {
-				this.parse(UtilTools.readFileToString(file.getAbsolutePath()), file, ignoreTreeDiff);		
+				this.parse(UtilTools.readFileToString(UtilFile.getAbsolutePath(file)), file, ignoreTreeDiff);
 			}
 		} else {
 			if(file.listFiles() != null){
@@ -101,13 +106,13 @@ public class APIVersion {
 		parser.setSource(str.toCharArray());
 		parser.setKind(ASTParser.K_COMPILATION_UNIT);
 		String[] classpath = java.lang.System.getProperty("java.class.path").split(";");
-		String[] sources = { source.getParentFile().getAbsolutePath() };
+		String[] sources = { UtilFile.getAbsolutePath(source.getParentFile()) };
 
 		Hashtable<String, String> options = JavaCore.getOptions();
 		options.put(JavaCore.COMPILER_SOURCE, JavaCore.VERSION_1_8);
 		options.put(JavaCore.COMPILER_CODEGEN_TARGET_PLATFORM, JavaCore.VERSION_1_8);
 		options.put(JavaCore.COMPILER_COMPLIANCE, JavaCore.VERSION_1_8);
-		parser.setUnitName(source.getAbsolutePath());
+		parser.setUnitName(UtilFile.getAbsolutePath(source));
 
 		parser.setCompilerOptions(options);
 //		parser.setEnvironment(null, sources, new String[] { "UTF-8" },	true);
@@ -144,7 +149,7 @@ public class APIVersion {
 	}
 	
 	private Boolean isFileModification(final File source, final Boolean ignoreTreeDiff){
-		return (ignoreTreeDiff || this.listFilesMofify.contains(source.getAbsolutePath()))? true: false;
+		return (ignoreTreeDiff || this.listFilesMofify.contains(UtilFile.getAbsolutePath(source)))? true: false;
 	}
 
 	public ArrayList<EnumDeclaration> getApiAccessibleEnums() {

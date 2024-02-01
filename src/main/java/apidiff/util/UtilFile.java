@@ -1,12 +1,6 @@
 package apidiff.util;
 
-import java.io.BufferedReader;
-import java.io.BufferedWriter;
-import java.io.FileOutputStream;
-import java.io.FileReader;
-import java.io.IOException;
-import java.io.OutputStreamWriter;
-import java.io.Writer;
+import java.io.*;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -100,5 +94,13 @@ public class UtilFile {
 		    br.close();
 		}
 		return result;
+	}
+
+	public static String getAbsolutePath(String file) {
+		return getAbsolutePath(new File(file));
+	}
+
+	public static String getAbsolutePath(File file) {
+		return file.getAbsolutePath().replace("\\", "/");
 	}
 }
