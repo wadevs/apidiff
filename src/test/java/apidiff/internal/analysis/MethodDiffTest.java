@@ -2,9 +2,11 @@ package apidiff.internal.analysis;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+import java.io.File;
 import java.util.List;
 import java.util.stream.Collectors;
 
+import apidiff.util.UtilFile;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -22,8 +24,7 @@ class MethodDiffTest {
 	@BeforeEach
 	void setUp() throws Exception {
 		diff = new APIDiff("PhilJay/MPAndroidChart", "https://github.com/PhilJay/MPAndroidChart.git");
-		diff.setPath("./dataset");
-		
+		diff.setPath(UtilFile.getAbsolutePath("dataset"));
 	}
 
 	@Test
@@ -42,7 +43,7 @@ class MethodDiffTest {
 				.equals(change.getElement()))
 			.collect(Collectors.toList());
 		
-		assertEquals(changes.size(), 1, 
+		assertEquals(1, changes.size(),
 				"There is no Push Down Method operation");
 		assertTrue(changes.get(0).isBreakingChange(), 
 				"Push Down Method is a breaking change");
@@ -71,7 +72,7 @@ class MethodDiffTest {
 				.equals(change.getElement()))
 			.collect(Collectors.toList());
 		
-		assertEquals(changes.size(), 1, 
+		assertEquals(1, changes.size(),
 				"There is no Pull Up Method operation");
 		assertFalse(changes.get(0).isBreakingChange(), 
 				"Pull Up Method operation is not breaking change");
@@ -98,7 +99,7 @@ class MethodDiffTest {
 				.equals(change.getElement()))
 			.collect(Collectors.toList());
 		
-		assertEquals(changes.size(), 1, 
+		assertEquals(1, changes.size(),
 				"There is no Rename Method operation");
 		assertTrue(changes.get(0).isBreakingChange(), 
 				"Rename Method operation is breaking change");
@@ -114,7 +115,8 @@ class MethodDiffTest {
 	
 	@Test
 	void testDetectInline() {
-		Result result = diff.detectChangeAtCommit("4ab4c0ba", Classifier.API);
+		// NOTE: in example folder: com.xxmassdeveloper.mpchartexample.BarChartActivity
+		Result result = diff.detectChangeAtCommit("4ab4c0ba", Classifier.EXAMPLE);
 
 		List<Change> changes = result.getChangeMethod().stream()
 			.filter(change -> Category.METHOD_INLINE
@@ -125,7 +127,7 @@ class MethodDiffTest {
 				.equals(change.getElement()))
 			.collect(Collectors.toList());
 		
-		assertEquals(changes.size(), 1, 
+		assertEquals(1, changes.size(),
 				"There is no Inline Method operation");
 		assertTrue(changes.get(0).isBreakingChange(), 
 				"Inline Method operation is breaking change");
