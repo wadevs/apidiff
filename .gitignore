@@ -1,4 +1,6 @@
-dataset/
+dataset/*
+!dataset/ToProcess
+dataset/ToProcess/Usages
 
 #Local Files
 *.Rhistory

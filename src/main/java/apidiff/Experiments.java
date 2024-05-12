@@ -3,11 +3,12 @@ package apidiff;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
-import java.util.Date;
+import java.util.Arrays;
+// import java.util.Date;
 import java.util.List;
 import java.util.Map;
 import java.io.File;
-import java.nio.file.CopyOption;
+// import java.nio.file.CopyOption;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
@@ -44,34 +45,26 @@ public class Experiments {
         }
 
         for (File file : fileList) {
-            Files.move(Paths.get(dirToProcess + "/" + file.getName()), Paths.get(dirProcessed + "/" + file.getName()),
+            Files.move(Paths.get(dirToProcess + "/" + file.getName()),
+                    Paths.get(dirProcessed + "/" + file.getName()),
                     StandardCopyOption.REPLACE_EXISTING);
         }
+
+        // Single call tests
+        // exp.process(dtf.format(now), "MPAndroidChart",
+        // "https://github.com/PhilJay/MPAndroidChart.git");
+
+        // exp.process(dtf.format(now), "mockito",
+        // "https://github.com/mockito/mockito.git");
+
+        // exp.process(dtf.format(now), "junit-engine",
+        // "https://github.com/junit-team/junit5.git");
     }
 
     private void process(String formattedNow, String nameProject, String url) throws Exception {
         APIDiff diff = new APIDiff(nameProject, url);
         diff.setPath(UtilFile.getAbsolutePath("dataset"));
-        Result result = diff.detectChangeAllHistory("master", Classifier.API);
-        // Result result2 = diff.
 
-        List<String> listChanges = new ArrayList<String>();
-        listChanges.add(
-                "Category;isBreakingChange;Description;Element;ElementType;Path;Class;RevCommit;isDeprecated;containsJavadoc");
-        for (Change changeMethod : result.getChangeMethod()) {
-            String change = changeMethod.getCategory().getDisplayName() + ";"
-                    + changeMethod.isBreakingChange() + ";"
-                    + changeMethod.getDescription() + ";"
-                    + changeMethod.getElement() + ";"
-                    + changeMethod.getElementType() + ";"
-                    + changeMethod.getPath() + ";"
-                    + changeMethod.getClass() + ";"
-                    + changeMethod.getRevCommit() + ";"
-                    + changeMethod.isDeprecated() + ";"
-                    + changeMethod.containsJavadoc();
-            listChanges.add(change);
-        }
-        UtilFile.writeFile("dataset/Output/output" + "_" + nameProject
-                + "_" + formattedNow + ".csv", listChanges);
+        diff.detectChangeAndOuputToFiles("master", Arrays.asList(Classifier.API), nameProject);
     }
 }
