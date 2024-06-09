@@ -22,6 +22,7 @@ import org.eclipse.jgit.treewalk.FileTreeIterator;
 import org.eclipse.jgit.treewalk.TreeWalk;
 import org.eclipse.jgit.util.io.DisabledOutputStream;
 
+import com.google.common.collect.MapConstraint;
 import com.jcabi.log.Logger;
 
 import java.io.ByteArrayOutputStream;
@@ -42,7 +43,8 @@ public class Experiments {
         // String mode = "process diff"; // process diff
         // String mode = "test/get file names"; // tests -> ok
         // String mode = "test/get file content"; // tests -> ok
-        String mode = "test/get diffs"; // tests -> ok
+        // String mode = "test/get diffs"; // tests -> ok
+        String mode = "test migration"; // tests ->
 
         Experiments exp = new Experiments();
 
@@ -149,6 +151,8 @@ public class Experiments {
                     p -> System.out.println(MessageFormat.format("File: {0}, \nDiff: {1}", p.getKey(), p.getValue())));
 
             rw.close();
+        } else if (mode == "test migration") {
+            exp.migrationIdentifier("https://github.com/wadevs/DummyMaven", "DummyMaven", "MPAndroidChart");
         }
     }
 
@@ -159,17 +163,26 @@ public class Experiments {
         diff.detectChangeAndOuputToFiles("master", Arrays.asList(Classifier.API), nameProject);
     }
 
-    private void migrationIdentifier(String client, String projectName) {
-        String clientGitUrl = "";
+    private void migrationIdentifier(String clientGitUrl, String projectName, String apiName) {
+        // String clientGitUrl = "";
 
         try {
             GitService service = new GitServiceImpl();
             Repository repository = service.openRepositoryAndCloneIfNotExists(
                     UtilFile.getAbsolutePath("dataset"), projectName, clientGitUrl);
-            RevWalk revWalk = service.createAllRevsWalk(repository, "master");
+            RevWalk revWalk = service.createAllRevsWalk(repository, "main");
 
             List<Change> BCs = new ArrayList<Change>();
             // TODO: parse BC files into List of Change or ChangeLike object
+            String bcsDir = UtilFile.getAbsolutePath("dataset/Output/");
+            File[] fileList = new File(bcsDir).listFiles();
+
+            List<Map<String, String>> bcsMapList = new ArrayList<>();
+            for (File file : fileList) {
+                if (file.isFile() && file.getName().contains(apiName)) {
+                    bcsMapList.addAll(UtilFile.convertCSVFileToListofMaps(file.getAbsolutePath()));
+                }
+            }
 
             Iterator<RevCommit> i = revWalk.iterator();
             while (i.hasNext()) {
@@ -190,34 +203,44 @@ public class Experiments {
                         repository, currentClientCommit);
 
                 for (Pair<String, String> javaFileNameAndContent : javaFileNamesAndContentInCommit) {
-                    ArrayList<Change> BcTimeFiltered = new ArrayList<Change>();
-                    for (Change change : BCs) {
-                        if (change.getRevCommit().getCommitTime() < clientCommitTime) {
-                            BcTimeFiltered.add(change);
+                    List<Map<String, String>> BcTimeFiltered = new ArrayList<Map<String, String>>();
+                    // for (Change change : BCs) {
+                    for (Map<String, String> bcMap : bcsMapList) {
+                        String[] revCommit = bcMap.get("RevCommit").split(" ");
+
+                        try {
+                            int changeCommitTime = Integer.parseInt(revCommit[2]);
+                            if (changeCommitTime < clientCommitTime) {
+                                BcTimeFiltered.add(bcMap);
+                            }
+                        } catch (Exception e) {
+                            // Ignore invalid data
                         }
+
                     }
 
                     String codeContent = javaFileNameAndContent.getValue();
 
-                    List<Change> importBCs = new ArrayList<Change>();
+                    List<Map<String, String>> importBCs = new ArrayList<Map<String, String>>();
                     List<String> imports = ImportMatching.getImports(codeContent);
                     for (String importStr : imports) {
-                        for (Change change : BcTimeFiltered) {
-                            if (change.getPath().contains(importStr)) {
-                                importBCs.add(change);
+                        for (Map<String, String> bcMap : BcTimeFiltered) {
+                            String path = bcMap.get("Path");
+                            if (path.contains(importStr)) {
+                                importBCs.add(bcMap);
                             }
                         }
                     }
 
                     String diffsForFile = "";
                     for (Pair<String, String> diffs : diffsForFilesInCommit) {
-                        if (diffs.getKey() == javaFileNameAndContent.getKey()) {
+                        if (diffs.getKey().equals(javaFileNameAndContent.getKey())) {
                             diffsForFile = diffs.getValue();
                             break;
                         }
                     }
-                    for (Change change : BcTimeFiltered) {
-                        if (diffsForFile.contains(change.getElement())) {
+                    for (Map<String, String> bcMap : BcTimeFiltered) {
+                        if (diffsForFile.contains(bcMap.get("Element"))) {
                             // log migration
                         }
                     }
