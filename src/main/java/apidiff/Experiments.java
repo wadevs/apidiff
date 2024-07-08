@@ -9,6 +9,11 @@ import java.util.List;
 import java.util.Map;
 
 import org.apache.commons.lang3.tuple.Pair;
+import org.eclipse.jdt.core.dom.ASTNode;
+import org.eclipse.jdt.core.dom.ASTVisitor;
+import org.eclipse.jdt.core.dom.CompilationUnit;
+import org.eclipse.jdt.core.dom.MethodDeclaration;
+import org.eclipse.jdt.core.dom.TypeDeclaration;
 import org.eclipse.jgit.diff.DiffEntry;
 import org.eclipse.jgit.diff.DiffFormatter;
 import org.eclipse.jgit.diff.RawTextComparator;
@@ -22,7 +27,6 @@ import org.eclipse.jgit.treewalk.FileTreeIterator;
 import org.eclipse.jgit.treewalk.TreeWalk;
 import org.eclipse.jgit.util.io.DisabledOutputStream;
 
-import com.google.common.collect.MapConstraint;
 import com.jcabi.log.Logger;
 
 import java.io.ByteArrayOutputStream;
@@ -37,6 +41,9 @@ import apidiff.enums.Classifier;
 import apidiff.internal.service.git.GitService;
 import apidiff.internal.service.git.GitServiceImpl;
 import apidiff.util.UtilFile;
+
+import apidiff.util.JavaParserUtility;
+import apidiff.util.JavaParserUtility.Token;;
 
 public class Experiments {
     public static void main(String[] args) throws Exception {
@@ -239,15 +246,63 @@ public class Experiments {
                             break;
                         }
                     }
-                    for (Map<String, String> bcMap : BcTimeFiltered) {
-                        if (diffsForFile.contains(bcMap.get("Element"))) {
-                            // log migration
+
+                    if (diffsForFile.length() > 0) {
+
+                        for (Map<String, String> bcMap : importBCs) {
+                            try {
+                                TypeDeclaration typeDec = JavaParserUtility.parseExpression(
+                                        // "public class X {" + bcMap.get("Element") + "{}}", false);
+                                        bcMap.get("Element") + ";", false);
+
+                                String methodName = bcMap.get("Element");
+                                // typeDec.accept(new ASTVisitor(true) {
+                                // @Override
+                                // public boolean visit(MethodDeclaration node) {
+                                // System.out.println(node.getName().toString());
+                                // node.getName().toString();
+                                // return false;
+                                // }
+                                // });
+
+                                // TODO: if/else for method, field, type change
+                                List<Object> bodyDec = typeDec.bodyDeclarations();
+                                if (bodyDec.size() > 0
+                                        && bodyDec.getFirst() instanceof MethodDeclaration) {
+                                    methodName = ((MethodDeclaration) typeDec.bodyDeclarations().getFirst()).getName()
+                                            .toString();
+                                    if (methodName.equals("setCenterText")) {
+                                        System.out.println(methodName);
+                                        // System.out.println(diffsForFile);
+                                    }
+                                }
+
+                                // List<Token> tokenList = JavaParserUtility
+                                // // .tokensToAST("public class X {" + bcMap.get("Element") + "{}}", cUnit);
+                                // .tokensToAST(bcMap.get("Element") + ";", cUnit);
+                                if (diffsForFile.contains(methodName)) {
+                                    System.out.println("match");
+                                    // log migration
+                                }
+                            } catch (Exception ex) {
+                                try {
+                                    Logger.info(projectName, ex.getMessage());
+                                } catch (IllegalStateException e) {
+                                    // Ignore (comes from java 12+)
+                                }
+                            }
                         }
+
                     }
                 }
             }
         } catch (Exception ex) {
-            Logger.info(projectName, ex.getMessage());
+            try {
+                Logger.info(projectName, ex.getMessage());
+            } catch (IllegalStateException e) {
+                // Ignore (comes from java 12+)
+            }
+
         }
     }
 
