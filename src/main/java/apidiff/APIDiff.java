@@ -91,7 +91,7 @@ public class APIDiff implements DiffDetector {
 		return result;
 	}
 
-	public void detectChangeAndOuputToFiles(String branch, List<Classifier> classifiers, String fileName)
+	public void detectChangeAndOutputToFiles(String branch, List<Classifier> classifiers, String fileName)
 			throws Exception {
 		int commitCounter = 0;
 		long unixTime = System.currentTimeMillis() / 1000L;
@@ -104,37 +104,40 @@ public class APIDiff implements DiffDetector {
 		{
 			int nbTotCommits = 0;
 			RevWalk dummyWalk = service.createAllRevsWalk(repository, branch);
-			Iterator<RevCommit> i = dummyWalk.iterator();
-			while (i.hasNext()) {
+			Iterator<RevCommit> dummyCounter = dummyWalk.iterator();
+			while (dummyCounter.hasNext()) {
 				nbTotCommits++;
 				// this.logger.info("Current commits: " + nbTotCommits);
-				i.next();
+				dummyCounter.next();
 			}
 			this.logger.info("Total commits: " + nbTotCommits);
-		}
 
-		Iterator<RevCommit> i = revWalk.iterator();
-		while (i.hasNext()) {
-			try {
-				this.logger.info("Commit n°" + commitCounter + ".");
-				RevCommit currentCommit = i.next();
-				for (Classifier classifierAPI : classifiers) {
-					// Sometimes crashes in diffcommit, GC or heap exception
-					Result resultByClassifier = this.diffCommit(currentCommit, repository, this.nameProject,
-							classifierAPI);
-					result.getChangeType().addAll(resultByClassifier.getChangeType());
-					result.getChangeMethod().addAll(resultByClassifier.getChangeMethod());
-					result.getChangeField().addAll(resultByClassifier.getChangeField());
+			// Temporary (?) restriction to smaller projects
+			if (nbTotCommits < 5000) {
+				Iterator<RevCommit> i = revWalk.iterator();
+				while (i.hasNext()) {
+					try {
+						this.logger.info("Commit n°" + commitCounter + ".");
+						RevCommit currentCommit = i.next();
+						for (Classifier classifierAPI : classifiers) {
+							// Sometimes crashes in diffcommit, GC or heap exception
+							Result resultByClassifier = this.diffCommit(currentCommit, repository, this.nameProject,
+									classifierAPI);
+							result.getChangeType().addAll(resultByClassifier.getChangeType());
+							result.getChangeMethod().addAll(resultByClassifier.getChangeMethod());
+							result.getChangeField().addAll(resultByClassifier.getChangeField());
+						}
+						if (commitCounter % 100 == 0 && commitCounter > 0 || !i.hasNext()) {
+							this.logger.info("Commit n°" + commitCounter + ", outputting to file.");
+							writeChangesToFile(result, fileName + "_" + unixTime + "_" + commitCounter);
+							result = new Result();
+						}
+					} catch (Throwable ex) {
+						this.logger.error("In while: " + ex.getMessage());
+					}
+					commitCounter++;
 				}
-				if (commitCounter % 100 == 0 && commitCounter > 0 || !i.hasNext()) {
-					this.logger.info("Commit n°" + commitCounter + ", outputting to file.");
-					writeChangesToFile(result, fileName + "_" + unixTime + "_" + commitCounter);
-					result = new Result();
-				}
-			} catch (Throwable ex) {
-				this.logger.error("In while: " + ex.getMessage());
 			}
-			commitCounter++;
 		}
 		this.logger.info("Finished processing.");
 	}
