@@ -9,9 +9,7 @@ import java.util.List;
 import java.util.Map;
 
 import org.apache.commons.lang3.tuple.Pair;
-import org.eclipse.jdt.core.dom.ASTNode;
-import org.eclipse.jdt.core.dom.ASTVisitor;
-import org.eclipse.jdt.core.dom.CompilationUnit;
+import org.eclipse.jdt.core.dom.FieldDeclaration;
 import org.eclipse.jdt.core.dom.MethodDeclaration;
 import org.eclipse.jdt.core.dom.TypeDeclaration;
 import org.eclipse.jgit.diff.DiffEntry;
@@ -43,15 +41,19 @@ import apidiff.internal.service.git.GitServiceImpl;
 import apidiff.util.UtilFile;
 
 import apidiff.util.JavaParserUtility;
-import apidiff.util.JavaParserUtility.Token;
 
 public class Experiments {
+    public static final int API_NAME_POSITION = 4;
+    public static final int API_OUTPUT_TIME_POSITION = 0;
+    public static final int BC_REV_COMMIT_POSITION = 2;
+    public static final int FILE_NAME_API_NAME_POSITION = 1;
+
     public static void main(String[] args) throws Exception {
         // String mode = "process diff"; // process diff
         // String mode = "test/get file names"; // tests -> ok
         // String mode = "test/get file content"; // tests -> ok
         // String mode = "test/get diffs"; // tests -> ok
-        // String mode = "test migration"; // tests ->
+        // String mode = "test migration"; // tests -> ok
         String mode = "migration process"; // tests ->
 
         Experiments exp = new Experiments();
@@ -171,9 +173,10 @@ public class Experiments {
 
             for (File usagesFile : fileList) {
                 if (usagesFile.isFile()) {
-                    // ApiName is the 5th element in the filename by construction
-                    String apiName = usagesFile.getName().split("_")[4];
-                    String apiOutputTime = usagesFile.getName().split("_")[0];
+                    // apiName is the 5th element in the filename by construction
+                    String apiName = usagesFile.getName().split("_")[API_NAME_POSITION];
+                    // apiOutputTime is the 1st element in the filename by construction
+                    String apiOutputTime = usagesFile.getName().split("_")[API_OUTPUT_TIME_POSITION];
 
                     File outputApiDir = new File("dataset/Output/" + apiName);
                     if (!outputApiDir.exists()) {
@@ -183,10 +186,10 @@ public class Experiments {
                     List<Map<String, String>> usagesCsvMapList = new ArrayList<>();
                     usagesCsvMapList.addAll(UtilFile.convertCSVFileToListofMaps(usagesFile.getAbsolutePath()));
 
-                    for (Map<String, String> usagesCsvMap : usagesCsvMapList) {
+                    for (Map<String, String> usageCsvMap : usagesCsvMapList) {
                         // Should only have one link
-                        String githubLink = usagesCsvMap.get("GithubLinks").trim().split(" ")[0];
-                        String projectName = usagesCsvMap.get("ArtifactTitle");
+                        String githubLink = usageCsvMap.get("GithubLinks").trim().split(" ")[0];
+                        String projectName = usageCsvMap.get("ArtifactTitle");
 
                         File outputApiClientDir = new File(outputApiDir + "/" + projectName);
                         if (!outputApiClientDir.exists()) {
@@ -204,7 +207,9 @@ public class Experiments {
         APIDiff diff = new APIDiff(nameProject, url);
         diff.setPath(UtilFile.getAbsolutePath("dataset"));
 
+        // The principal branch could be either master or main
         diff.detectChangeAndOutputToFiles("master", Arrays.asList(Classifier.API), nameProject);
+        diff.detectChangeAndOutputToFiles("main", Arrays.asList(Classifier.API), nameProject);
     }
 
     private void migrationIdentifier(String clientGitUrl, String projectName, String apiName, String apiOutputTime,
@@ -224,20 +229,22 @@ public class Experiments {
                 nbCommitsInBranch = nbCommitsInBranch(service, repository, "master");
             }
 
-            // restrict to < 5000 commits
+            // restrict to < 5000 commits, YEET this restriction probably
             if (nbCommitsInBranch > 0 && nbCommitsInBranch < 5000) {
                 List<Change> BCs = new ArrayList<Change>();
-                // TODO: parse BC files into List of Change or ChangeLike object
+
                 String bcsDir = UtilFile.getAbsolutePath("dataset/Output/");
                 File[] fileList = new File(bcsDir).listFiles();
 
                 List<Map<String, String>> bcsMapList = new ArrayList<>();
                 for (File file : fileList) {
                     // if (file.isFile() && file.getName().contains(apiName)) {
-                    if (file.isFile() && file.getName().split("_")[1].equals(apiName)) {
+                    if (file.isFile() && file.getName().split("_")[FILE_NAME_API_NAME_POSITION].equals(apiName)) {
                         bcsMapList.addAll(UtilFile.convertCSVFileToListofMaps(file.getAbsolutePath()));
                     }
                 }
+
+                int clientCommitCounter = 0;
 
                 Iterator<RevCommit> i = revWalk.iterator();
                 while (i.hasNext()) {
@@ -262,11 +269,12 @@ public class Experiments {
                     for (Pair<String, String> javaFileNameAndContent : javaFileNamesAndContentInCommit) {
                         List<Map<String, String>> BcTimeFiltered = new ArrayList<Map<String, String>>();
                         // for (Change change : BCs) {
+                        // TODO: Move time filtering out of loop ?
                         for (Map<String, String> bcMap : bcsMapList) {
                             String[] revCommit = bcMap.get("RevCommit").split(" ");
 
                             try {
-                                int changeCommitTime = Integer.parseInt(revCommit[2]);
+                                int changeCommitTime = Integer.parseInt(revCommit[BC_REV_COMMIT_POSITION]);
                                 if (changeCommitTime < clientCommitTime) {
                                     BcTimeFiltered.add(bcMap);
                                 }
@@ -297,6 +305,7 @@ public class Experiments {
                             }
                         }
 
+                        // Type formatting from List<Map<String, String>> to List<String>
                         List<String> matchedImports = new ArrayList<String>();
                         for (Map<String, String> bcMap : importBCs) {
                             matchedImports.add(bcMap.get("Path"));
@@ -327,6 +336,8 @@ public class Experiments {
                         for (Pair<String, String> diffs : diffsForFilesInCommit) {
                             if (diffs.getKey().equals(javaFileNameAndContent.getKey())) {
                                 diffsForFile = diffs.getValue();
+                                // TODO: check influence of break here,may need append if more that one diffs
+                                // per file
                                 break;
                             }
                         }
@@ -342,7 +353,9 @@ public class Experiments {
                                                 // "public class X {" + bcMap.get("Element") + "{}}", false);
                                                 bcMap.get("Element") + ";", false);
 
-                                        String methodName = bcMap.get("Element");
+                                        // String methodName = bcMap.get("Element");
+                                        String element = "";
+
                                         // typeDec.accept(new ASTVisitor(true) {
                                         // @Override
                                         // public boolean visit(MethodDeclaration node) {
@@ -354,21 +367,39 @@ public class Experiments {
 
                                         // TODO: if/else for method, field, type change
                                         List<Object> bodyDec = typeDec.bodyDeclarations();
-                                        if (bodyDec.size() > 0
-                                                && bodyDec.getFirst() instanceof MethodDeclaration) {
-                                            methodName = ((MethodDeclaration) typeDec.bodyDeclarations().getFirst())
-                                                    .getName()
-                                                    .toString();
-                                            if (methodName.equals("setCenterText")) {
-                                                System.out.println(methodName);
-                                                // System.out.println(diffsForFile);
+                                        // if (bodyDec.size() > 0
+                                        // && bodyDec.getFirst() instanceof MethodDeclaration) {
+                                        // element = ((MethodDeclaration) typeDec.bodyDeclarations().getFirst())
+                                        // .getName()
+                                        // .toString();
+                                        // if (element.equals("setCenterText")) {
+                                        // System.out.println(element);
+                                        // // System.out.println(diffsForFile);
+                                        // }
+                                        // }
+
+                                        if (bodyDec.size() > 0) {
+                                            Object dec = bodyDec.getFirst();
+                                            if (dec instanceof MethodDeclaration) {
+                                                element = ((MethodDeclaration) typeDec.bodyDeclarations().getFirst())
+                                                        .getName()
+                                                        .toString();
+                                            } else if (dec instanceof FieldDeclaration) {
+                                                element = ((FieldDeclaration) typeDec.bodyDeclarations().getFirst())
+                                                        .fragments()
+                                                        .getFirst()
+                                                        .toString();
+                                            } else if (dec instanceof TypeDeclaration) {
+                                                element = ((TypeDeclaration) typeDec.bodyDeclarations().getFirst())
+                                                        .getName()
+                                                        .toString();
                                             }
                                         }
 
                                         // List<Token> tokenList = JavaParserUtility
                                         // // .tokensToAST("public class X {" + bcMap.get("Element") + "{}}", cUnit);
                                         // .tokensToAST(bcMap.get("Element") + ";", cUnit);
-                                        if (diffsForFile.contains(methodName)) {
+                                        if (diffsForFile.contains(element)) {
                                             // System.out.println("match");
                                             // log migration
                                             List<String> diffsAsList = new ArrayList<String>();
@@ -399,6 +430,11 @@ public class Experiments {
 
                             }
                         }
+                    }
+                    clientCommitCounter++;
+                    // Temporary (?) restriction to avoid "endless" processing of huge projects
+                    if (clientCommitCounter > APIDiff.COMMITS_TO_PROCESS_LIMIT) {
+                        break;
                     }
                 }
             }

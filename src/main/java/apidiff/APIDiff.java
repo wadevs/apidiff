@@ -26,6 +26,8 @@ import apidiff.util.UtilFile;
 
 public class APIDiff implements DiffDetector {
 
+	public static final int COMMITS_TO_PROCESS_LIMIT = 15000;
+
 	private String nameProject;
 
 	private String path;
@@ -112,32 +114,35 @@ public class APIDiff implements DiffDetector {
 			}
 			this.logger.info("Total commits: " + nbTotCommits);
 
-			// Temporary (?) restriction to smaller projects
-			if (nbTotCommits < 5000) {
-				Iterator<RevCommit> i = revWalk.iterator();
-				while (i.hasNext()) {
-					try {
-						this.logger.info("Commit n°" + commitCounter + ".");
-						RevCommit currentCommit = i.next();
-						for (Classifier classifierAPI : classifiers) {
-							// Sometimes crashes in diffcommit, GC or heap exception
-							Result resultByClassifier = this.diffCommit(currentCommit, repository, this.nameProject,
-									classifierAPI);
-							result.getChangeType().addAll(resultByClassifier.getChangeType());
-							result.getChangeMethod().addAll(resultByClassifier.getChangeMethod());
-							result.getChangeField().addAll(resultByClassifier.getChangeField());
-						}
-						if (commitCounter % 100 == 0 && commitCounter > 0 || !i.hasNext()) {
-							this.logger.info("Commit n°" + commitCounter + ", outputting to file.");
-							writeChangesToFile(result, fileName + "_" + unixTime + "_" + commitCounter);
-							result = new Result();
-						}
-					} catch (Throwable ex) {
-						this.logger.error("In while: " + ex.getMessage());
+			Iterator<RevCommit> i = revWalk.iterator();
+			while (i.hasNext()) {
+				try {
+					this.logger.info("Commit n°" + commitCounter + ".");
+					RevCommit currentCommit = i.next();
+					for (Classifier classifierAPI : classifiers) {
+						// Sometimes crashes in diffcommit, GC or heap exception
+						Result resultByClassifier = this.diffCommit(currentCommit, repository, this.nameProject,
+								classifierAPI);
+						result.getChangeType().addAll(resultByClassifier.getChangeType());
+						result.getChangeMethod().addAll(resultByClassifier.getChangeMethod());
+						result.getChangeField().addAll(resultByClassifier.getChangeField());
 					}
-					commitCounter++;
+					if (commitCounter % 100 == 0 && commitCounter > 0 || !i.hasNext()) {
+						this.logger.info("Commit n°" + commitCounter + ", outputting to file.");
+						writeChangesToFile(result, fileName + "_" + unixTime + "_" + commitCounter + "_" + branch);
+						result = new Result();
+					}
+				} catch (Throwable ex) {
+					this.logger.error("In while: " + ex.getMessage());
+				}
+				commitCounter++;
+
+				// Temporary (?) restriction to avoid "endless" processing of huge projects
+				if (commitCounter > COMMITS_TO_PROCESS_LIMIT) {
+					break;
 				}
 			}
+
 		}
 		this.logger.info("Finished processing.");
 	}
