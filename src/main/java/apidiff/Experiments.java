@@ -4,6 +4,7 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
@@ -73,12 +74,40 @@ public class Experiments {
                 }
             }
 
+            // Regroup all the artifacts that share a common git repository
+            Map<String, String> gitLinkSharedMap = new HashMap<String, String>();
+            for (Map<String, String> map : csvMapList) {
+                String[] githubLinks = map.get("GithubLinks").split(",");
+                String nameProject = map.get("ArtifactTitle");
+                String firstLink;
+
+                try {
+                    firstLink = githubLinks[0].trim();
+                    String currentProjectNamesForLink = gitLinkSharedMap.get(firstLink);
+
+                    // Append the current name if there are other artifacts already, use $ as a
+                    // filename compatible separator
+                    if (currentProjectNamesForLink.length() > 0) {
+                        gitLinkSharedMap.put(firstLink, currentProjectNamesForLink + "$" + nameProject);
+                    }
+                    // Put the first one in otherwise
+                    else {
+                        gitLinkSharedMap.put(firstLink, nameProject);
+                    }
+                } catch (Exception ex) {
+                    Logger.info(githubLinks, ex.getMessage());
+                }
+            }
+
             for (Map<String, String> map : csvMapList) {
                 String[] githubLinks = map.get("GithubLinks").split(",");
                 String nameProject = map.get("ArtifactTitle");
                 try {
-                    System.out.println(githubLinks[0].trim());
-                    exp.process(dtf.format(now), nameProject, githubLinks[0].trim() + ".git");
+                    String firstLink = githubLinks[0].trim();
+                    System.out.println(firstLink);
+                    // exp.process(dtf.format(now), nameProject, githubLinks[0].trim() + ".git");
+                    // Use the agregated name as project name
+                    exp.process(dtf.format(now), gitLinkSharedMap.get(firstLink), firstLink + ".git");
                 } catch (Exception ex) {
                     System.out.println(ex.getMessage());
                 }
