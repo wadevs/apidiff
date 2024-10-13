@@ -27,6 +27,7 @@ import apidiff.util.UtilFile;
 public class APIDiff implements DiffDetector {
 
 	public static final int COMMITS_TO_PROCESS_LIMIT = 15000;
+	public static final int TIME_TO_PROCESS_SECONDS_LIMIT = 3600;
 
 	private String nameProject;
 
@@ -96,7 +97,7 @@ public class APIDiff implements DiffDetector {
 	public void detectChangeAndOutputToFiles(String branch, List<Classifier> classifiers, String fileName)
 			throws Exception {
 		int commitCounter = 0;
-		long unixTime = System.currentTimeMillis() / 1000L;
+		long unixTimeStart = System.currentTimeMillis() / 1000L;
 		Result result = new Result();
 		GitService service = new GitServiceImpl();
 		Repository repository = service.openRepositoryAndCloneIfNotExists(this.path, this.nameProject, this.url);
@@ -129,7 +130,7 @@ public class APIDiff implements DiffDetector {
 					}
 					if (commitCounter % 100 == 0 && commitCounter > 0 || !i.hasNext()) {
 						this.logger.info("Commit n°" + commitCounter + ", outputting to file.");
-						writeChangesToFile(result, fileName + "_" + unixTime + "_" + commitCounter + "_" + branch);
+						writeChangesToFile(result, fileName + "_" + unixTimeStart + "_" + commitCounter + "_" + branch);
 						result = new Result();
 					}
 				} catch (Throwable ex) {
@@ -138,7 +139,9 @@ public class APIDiff implements DiffDetector {
 				commitCounter++;
 
 				// Temporary (?) restriction to avoid "endless" processing of huge projects
-				if (commitCounter > COMMITS_TO_PROCESS_LIMIT) {
+				long unixTimeNow = System.currentTimeMillis() / 1000L;
+				if ((unixTimeNow - unixTimeStart) > TIME_TO_PROCESS_SECONDS_LIMIT) {
+					this.logger.error("Timeout in change detector");
 					break;
 				}
 			}
