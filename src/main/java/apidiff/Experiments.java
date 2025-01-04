@@ -29,6 +29,7 @@ import org.eclipse.jgit.treewalk.FileTreeIterator;
 import org.eclipse.jgit.treewalk.TreeWalk;
 import org.eclipse.jgit.util.io.DisabledOutputStream;
 
+import com.google.common.base.Throwables;
 import com.jcabi.immutable.Array;
 import com.jcabi.log.Logger;
 
@@ -76,10 +77,11 @@ public class Experiments {
     public static final String CSV_HEADER_CLIENT_HAS_IMPORTS = "JavaFileHasImports";
     public static final String CSV_HEADER_CLIENT_HAS_IMPORTS_OF_BCFILE = "JavaFileHasImportsOfFileContainingBc";
     public static final String CSV_HEADER_CLIENT_BC_ID = "BcIdentifier";
+    public static final String CSV_HEADER_BC_CATEGORY = "BcCategory";
     public static final String CSV_HEADER_CLIENT_BC_COMMIT_ID = "BcCommitId";
     public static final String CSV_HEADER_CLIENT_DIFF_CONTAINS_BC_ID = "DiffContainsBcIdentifier";
     public static final String CSV_HEADER_CLIENT_DIFF_LINES_CONTAINS_BC_ID = "DiffLinesContainBcIdentifier";
-    public static final String CSV_HEADER_CLIENT_PROCESSING_TIMEOUT = "ProcessingTimeout";
+    public static final String CSV_HEADER_CLIENT_PROCESSING_TIMEOUT = "ProcessingTimeoutOrError";
 
     // Protocols and extensions
     public static final String GIT_EXTENSION = ".git";
@@ -90,6 +92,13 @@ public class Experiments {
     public static final String HTTP_PREFIX = "http://";
     public static final String HTTPS_PROTOCOL_GITHUB = HTTPS_PREFIX + "github.com/";
     public static final String HTTP_PROTOCOL_GITHUB = HTTP_PREFIX + "github.com/";
+
+    // Directories
+    public static final String DIR_DATASET = "dataset";
+    public static final String DIR_CLIENTS_DATASET = DIR_DATASET + "/Clients";
+    public static final String DIR_OUTPUT = DIR_DATASET + "/Output";
+    public static final String DIR_OUTPUT_MIGRATIONS = DIR_OUTPUT + "/Migrations";
+    public static final String DIR_OUTPUT_MIGRATIONS_SUCCESS = DIR_OUTPUT_MIGRATIONS + "/SuccessfulRun";
 
     public static void main(String[] args) throws Exception {
         // String mode = "process diff"; // process diff
@@ -108,6 +117,7 @@ public class Experiments {
             String dirToProcess = UtilFile.getAbsolutePath("dataset/ToProcess/");
             String dirProcessed = UtilFile.getAbsolutePath("dataset/Processed/");
             File[] fileList = new File(dirToProcess).listFiles();
+            File[] datasetFolderList = new File(UtilFile.getAbsolutePath("dataset")).listFiles();
 
             List<Map<String, String>> csvMapList = new ArrayList<>();
             for (File file : fileList) {
@@ -160,22 +170,43 @@ public class Experiments {
 
             try {
                 // TODO: works as append-to-file atm -> change it to override ?
-                UtilFile.writeFile("dataset/linkToProjectsMapping" + ".csv", linkToProjectsMapping);
+                UtilFile.writeFile(DIR_DATASET + "/linkToProjectsMapping" + ".csv", linkToProjectsMapping);
             } catch (Exception ex) {
                 Logger.info(linkToProjectsMapping, ex.getMessage());
             }
 
-            for (Map<String, String> map : csvMapList) {
-                String[] githubLinks = map.get("GithubLinks").split(",");
-                // String nameProject = map.get("ArtifactTitle");
-                try {
-                    String firstLink = githubLinks[0].trim();
-                    // System.out.println(firstLink);
+            // for (Map<String, String> map : csvMapList) {
+            // String[] githubLinks = map.get("GithubLinks").split(",");
+            // // String nameProject = map.get("ArtifactTitle");
+            // try {
+            // String firstLink = githubLinks[0].trim();
+            // // System.out.println(firstLink);
 
+            // // Use the trimmed github link as project name
+            // if (!firstLink.equals(CSV_HEADER_GITHUB_LINKS)) {
+            // exp.process(dtf.format(now),
+            // trimGithubLinkToFilename(convertGithubLinkToHttps(firstLink)),
+            // firstLink + ".git");
+            // }
+            // } catch (Exception ex) {
+            // System.out.println(ex.getMessage());
+            // }
+            // }
+
+            // Iterate over the links keySet to prevent redundant computation
+            for (String link : gitLinkSharedMap.keySet()) {
+                try {
+                    boolean datasetContainsFolder = false;
+                    for (File datasetFolder : datasetFolderList) {
+                        if (datasetFolder.isDirectory() && datasetFolder
+                                .getName().equals(trimGithubLinkToFilename(convertGithubLinkToHttps(link)))) {
+                            datasetContainsFolder = true;
+                            break;
+                        }
+                    }
                     // Use the trimmed github link as project name
-                    if (!firstLink.equals(CSV_HEADER_GITHUB_LINKS)) {
-                        exp.process(dtf.format(now), trimGithubLinkToFilename(convertGithubLinkToHttps(firstLink)),
-                                firstLink + ".git");
+                    if (!datasetContainsFolder && !link.equals(CSV_HEADER_GITHUB_LINKS)) {
+                        exp.process(dtf.format(now), trimGithubLinkToFilename(convertGithubLinkToHttps(link)), link);
                     }
                 } catch (Exception ex) {
                     System.out.println(ex.getMessage());
@@ -265,9 +296,19 @@ public class Experiments {
             // Test case broken by updating for multiple usages
             exp.migrationIdentifier("https://github.com/wadevs/DummyMaven", "DummyMaven", "MPAndroidChart", "", null);
         } else if (mode == "migration process") {
-            String dirToProcessUsages = UtilFile.getAbsolutePath("dataset/ToProcess/Usages");
+            String dirToProcessUsages = UtilFile.getAbsolutePath(DIR_DATASET + "/ToProcess/Usages");
+            String dirToProcessUsagesDone = dirToProcessUsages + "/Done";
             // String dirProcessed = UtilFile.getAbsolutePath("dataset/Processed/");
             File[] fileList = new File(dirToProcessUsages).listFiles();
+
+            File outputMigrationsDirSuccess = new File(DIR_OUTPUT_MIGRATIONS_SUCCESS);
+            if (!outputMigrationsDirSuccess.exists()) {
+                outputMigrationsDirSuccess.mkdirs();
+            }
+            File dirToProcessUsagesDoneFile = new File(dirToProcessUsagesDone);
+            if (!dirToProcessUsagesDoneFile.exists()) {
+                dirToProcessUsagesDoneFile.mkdirs();
+            }
 
             for (File usagesFile : fileList) {
                 if (usagesFile.isFile()) {
@@ -276,29 +317,51 @@ public class Experiments {
                     // apiOutputTime is the 1st element in the filename by construction
                     String apiOutputTime = usagesFile.getName().split("_")[API_OUTPUT_TIME_POSITION];
 
-                    File outputApiDir = new File("dataset/Output/" + apiName);
-                    if (!outputApiDir.exists()) {
-                        outputApiDir.mkdirs();
-                    }
+                    // Dir creation no longer needed
+                    // File outputApiDir = new File("dataset/Output/" + apiName);
+                    // if (!outputApiDir.exists()) {
+                    // outputApiDir.mkdirs();
+                    // }
 
                     List<Map<String, String>> usagesCsvMapList = new ArrayList<>();
                     usagesCsvMapList.addAll(UtilFile.convertCSVFileToListofMaps(usagesFile.getAbsolutePath()));
 
                     for (Map<String, String> usageCsvMap : usagesCsvMapList) {
-                        // Should only have one link
-                        String githubLink = convertGithubLinkToHttps(
-                                usageCsvMap.get(CSV_HEADER_GITHUB_LINKS).trim().split(" ")[0]);
-                        // String projectName =
-                        // convertArtifactPathToFilename(usageCsvMap.get(CSV_HEADER_ARTIFACT_LINK));
-                        String projectName = trimGithubLinkToFilename(githubLink);
+                        try {
+                            // Should only have one link
+                            String githubLink = convertGithubLinkToHttps(
+                                    usageCsvMap.get(CSV_HEADER_GITHUB_LINKS).trim().split(" ")[0]);
+                            // String projectName =
+                            // convertArtifactPathToFilename(usageCsvMap.get(CSV_HEADER_ARTIFACT_LINK));
+                            String projectName = trimGithubLinkToFilename(githubLink);
 
-                        File outputApiClientDir = new File(outputApiDir + "/" + projectName);
-                        if (!outputApiClientDir.exists()) {
-                            outputApiClientDir.mkdirs();
+                            // Dir creation no longer needed
+                            File outputApiClientDir = null;// new File(outputApiDir + "/" + projectName);
+                            // if (!outputApiClientDir.exists()) {
+                            // outputApiClientDir.mkdirs();
+                            // }
+
+                            exp.migrationIdentifier(githubLink, projectName, apiName, apiOutputTime,
+                                    outputApiClientDir);
+                        } catch (Exception e) {
+                            Logger.info("usagesCsvMapList loop", e.getMessage());
                         }
-
-                        exp.migrationIdentifier(githubLink, projectName, apiName, apiOutputTime, outputApiClientDir);
                     }
+
+                    // Move the files to know where the to restart
+                    Files.move(Paths.get(usagesFile.getPath()),
+                            Paths.get(dirToProcessUsagesDone + "/" + usagesFile.getName()),
+                            StandardCopyOption.REPLACE_EXISTING);
+
+                    File[] SuccessRunFiles = new File(DIR_OUTPUT_MIGRATIONS).listFiles();
+                    for (File migrationFile : SuccessRunFiles) {
+                        if (migrationFile.isFile()) {
+                            Files.move(Paths.get(migrationFile.getPath()),
+                                    Paths.get(DIR_OUTPUT_MIGRATIONS_SUCCESS + "/" + migrationFile.getName()),
+                                    StandardCopyOption.REPLACE_EXISTING);
+                        }
+                    }
+
                 }
             }
         }
@@ -318,34 +381,43 @@ public class Experiments {
         // String clientGitUrl = "";
         int potentialMigrationCounter = 0;
 
+        // Result parameters for final CSV file
+        String clientNameCsv = projectName;
+        String apiNameCsv = apiName;
+        boolean clientMainHasCommits = false;
+        boolean clientMasterHasCommits = false;
+        boolean apiHasBcs = false;
+        String commitId = "";
+        boolean commitHasJavaFiles = false;
+        boolean javaFileHasImports = false;
+        boolean javaFileHasImportsOfFileContainingBc = false;
+        String bcIdentifier = "";
+        String bcCommitId = "";
+        String bcCategory = "";
+        boolean diffContainsBcIdentifier = false;
+        boolean diffLinesContainBcIdentifier = false;
+        boolean processingTimeout = false;
+
+        // Maps to be logged as final results
+        List<Map<String, String>> migrationDetectionResults = new ArrayList<>();
+
         try {
+            File clientsDataset = new File(DIR_CLIENTS_DATASET);
+            if (!clientsDataset.exists()) {
+                clientsDataset.mkdirs();
+            }
+
             GitService service = new GitServiceImpl();
             Repository repository = service.openRepositoryAndCloneIfNotExists(
-                    UtilFile.getAbsolutePath("dataset"), projectName, clientGitUrl);
+                    UtilFile.getAbsolutePath(DIR_CLIENTS_DATASET), projectName, clientGitUrl);
             RevWalk revWalk = service.createAllRevsWalk(repository, "main");
-
-            // Result parameters for final CSV file
-            String clientNameCsv = projectName;
-            String apiNameCsv = apiName;
-            boolean clientMainHasCommits = false;
-            boolean clientMasterHasCommits = false;
-            boolean apiHasBcs = false;
-            String commitId = "";
-            boolean commitHasJavaFiles = false;
-            boolean javaFileHasImports = false;
-            boolean javaFileHasImportsOfFileContainingBc = false;
-            String bcIdentifier = "";
-            String bcCommitId = "";
-            boolean diffContainsBcIdentifier = false;
-            boolean diffLinesContainBcIdentifier = false;
-            boolean processingTimeout = false;
 
             int nbCommitsInBranch = nbCommitsInBranch(service, repository, "main");
             if (nbCommitsInBranch <= 0) {
                 revWalk = service.createAllRevsWalk(repository, "master");
                 nbCommitsInBranch = nbCommitsInBranch(service, repository, "master");
 
-                clientMasterHasCommits = (nbCommitsInBranch <= 0);
+                clientMasterHasCommits = (nbCommitsInBranch >= 0);
             } else {
                 clientMainHasCommits = true;
             }
@@ -353,13 +425,14 @@ public class Experiments {
             // restrict processing time to apidiff.TIME_TO_PROCESS_SECONDS_LIMIT
             long unixTimeStart = System.currentTimeMillis() / 1000L;
 
-            String bcsDir = UtilFile.getAbsolutePath("dataset/Output/");
+            String bcsDir = UtilFile.getAbsolutePath(DIR_OUTPUT);
             File[] fileList = new File(bcsDir).listFiles();
 
             // Extract the gitlink-to-foldername mapping
             Map<String, String> datasetMap = new HashMap<>();
             try {
-                File datasetMappingFile = new File(UtilFile.getAbsolutePath("dataset/linkToProjectsMapping.csv"));
+                File datasetMappingFile = new File(
+                        UtilFile.getAbsolutePath(DIR_DATASET + "/linkToProjectsMapping.csv"));
                 datasetMap = UtilFile.convertCSVFileToMap(datasetMappingFile.getAbsolutePath());
             } catch (Exception ex) {
                 Logger.info(this, ex.getMessage());
@@ -402,8 +475,6 @@ public class Experiments {
 
             int clientCommitCounter = 0;
 
-            // Maps to be logged as final results
-            List<Map<String, String>> migrationDetectionResults = new ArrayList<>();
             // putMapInResultList(migrationDetectionResults, clientNameCsv, apiNameCsv,
             // clientMainHasCommits,
             // clientMasterHasCommits, apiHasBcs, commitId, commitHasJavaFiles,
@@ -503,6 +574,8 @@ public class Experiments {
                                                 bcCommitId = bcMap.get("RevCommit")
                                                         .split(" ")[BC_REV_COMMIT_ID_POSITION];
 
+                                                bcCategory = bcMap.get("Category");
+
                                                 TypeDeclaration typeDec = JavaParserUtility.parseExpression(
                                                         // "public class X {" + bcMap.get("Element") + "{}}",
                                                         // false);
@@ -559,76 +632,89 @@ public class Experiments {
                                                 // TODO: comment
                                                 // We don't want to check if "" (empty string) belongs to the files,
                                                 // always true
-                                                if (diffContainsBcIdentifier = (element.length() > 0
-                                                        && diffsForFile.contains(element))) {
+                                                if (element.length() > 0) {
+                                                    if (diffContainsBcIdentifier = (diffsForFile.contains(element))) {
 
-                                                    String[] relevantLines = diffsForFile
-                                                            .split(System.lineSeparator());
-                                                    List<String> matchedLines = new ArrayList<String>();
+                                                        String[] relevantLines = diffsForFile
+                                                                .split(System.lineSeparator());
+                                                        List<String> matchedLines = new ArrayList<String>();
 
-                                                    List<String> addedLines = new ArrayList<>();
-                                                    for (String line : relevantLines) {
-                                                        if (line.startsWith("+")) {
-                                                            addedLines.add(line);
-                                                            if (line.contains(element)) {
-                                                                matchedLines.add(line);
+                                                        List<String> addedLines = new ArrayList<>();
+                                                        for (String line : relevantLines) {
+                                                            if (line.startsWith("+")) {
+                                                                addedLines.add(line);
+                                                                if (line.contains(element)) {
+                                                                    matchedLines.add(line);
+                                                                }
                                                             }
                                                         }
-                                                    }
 
-                                                    List<String> removedLines = new ArrayList<>();
-                                                    for (String line : relevantLines) {
-                                                        if (line.startsWith("-")) {
-                                                            removedLines.add(line);
-                                                            if (line.contains(element)) {
-                                                                matchedLines.add(line);
+                                                        List<String> removedLines = new ArrayList<>();
+                                                        for (String line : relevantLines) {
+                                                            if (line.startsWith("-")) {
+                                                                removedLines.add(line);
+                                                                if (line.contains(element)) {
+                                                                    matchedLines.add(line);
+                                                                }
                                                             }
                                                         }
-                                                    }
 
-                                                    // List<Token> tokenList = JavaParserUtility
-                                                    // // .tokensToAST("public class X {" + bcMap.get("Element") +
-                                                    // "{}}",
-                                                    // cUnit);
-                                                    // .tokensToAST(bcMap.get("Element") + ";", cUnit);
-                                                    // if (diffsForFile.contains(element)) {
-                                                    // // System.out.println("match");
-                                                    // // log migration
-                                                    // List<String> diffsAsList = new ArrayList<String>();
-                                                    // diffsAsList.add(diffsForFile);
+                                                        // List<Token> tokenList = JavaParserUtility
+                                                        // // .tokensToAST("public class X {" + bcMap.get("Element") +
+                                                        // "{}}",
+                                                        // cUnit);
+                                                        // .tokensToAST(bcMap.get("Element") + ";", cUnit);
+                                                        // if (diffsForFile.contains(element)) {
+                                                        // // System.out.println("match");
+                                                        // // log migration
+                                                        // List<String> diffsAsList = new ArrayList<String>();
+                                                        // diffsAsList.add(diffsForFile);
 
-                                                    // try {
-                                                    // UtilFile.writeFile(
-                                                    // migrationLogOutputDir + "/" + apiName + "_" + projectName +
-                                                    // "_"
-                                                    // + potentialMigrationCounter + ".txt",
-                                                    // diffsAsList);
-                                                    // potentialMigrationCounter++;
-                                                    // } catch (Exception ex) {
-                                                    // try {
-                                                    // Logger.info(projectName, ex.getMessage());
-                                                    // } catch (IllegalStateException e) {
-                                                    // // Ignore (comes from java 12+)
-                                                    // }
-                                                    // }
-                                                    // }
+                                                        // try {
+                                                        // UtilFile.writeFile(
+                                                        // migrationLogOutputDir + "/" + apiName + "_" + projectName +
+                                                        // "_"
+                                                        // + potentialMigrationCounter + ".txt",
+                                                        // diffsAsList);
+                                                        // potentialMigrationCounter++;
+                                                        // } catch (Exception ex) {
+                                                        // try {
+                                                        // Logger.info(projectName, ex.getMessage());
+                                                        // } catch (IllegalStateException e) {
+                                                        // // Ignore (comes from java 12+)
+                                                        // }
+                                                        // }
+                                                        // }
 
-                                                    if (diffLinesContainBcIdentifier = matchedLines.size() > 0) {
+                                                        if (diffLinesContainBcIdentifier = matchedLines.size() > 0) {
+                                                            putMapInResultList(migrationDetectionResults, clientNameCsv,
+                                                                    apiNameCsv, clientMainHasCommits,
+                                                                    clientMasterHasCommits,
+                                                                    apiHasBcs, commitId, commitHasJavaFiles,
+                                                                    javaFileHasImports,
+                                                                    javaFileHasImportsOfFileContainingBc, bcIdentifier,
+                                                                    bcCategory, bcCommitId, diffContainsBcIdentifier,
+                                                                    diffLinesContainBcIdentifier, processingTimeout);
+                                                            diffLinesContainBcIdentifier = false;
+                                                        }
+                                                    } else {
                                                         putMapInResultList(migrationDetectionResults, clientNameCsv,
                                                                 apiNameCsv, clientMainHasCommits,
                                                                 clientMasterHasCommits,
                                                                 apiHasBcs, commitId, commitHasJavaFiles,
                                                                 javaFileHasImports,
                                                                 javaFileHasImportsOfFileContainingBc, bcIdentifier,
-                                                                bcCommitId, diffContainsBcIdentifier,
+                                                                bcCategory, bcCommitId, diffContainsBcIdentifier,
                                                                 diffLinesContainBcIdentifier, processingTimeout);
                                                     }
                                                 } else {
                                                     putMapInResultList(migrationDetectionResults, clientNameCsv,
-                                                            apiNameCsv, clientMainHasCommits, clientMasterHasCommits,
-                                                            apiHasBcs, commitId, commitHasJavaFiles, javaFileHasImports,
+                                                            apiNameCsv, clientMainHasCommits,
+                                                            clientMasterHasCommits,
+                                                            apiHasBcs, commitId, commitHasJavaFiles,
+                                                            javaFileHasImports,
                                                             javaFileHasImportsOfFileContainingBc, bcIdentifier,
-                                                            bcCommitId, diffContainsBcIdentifier,
+                                                            bcCategory, bcCommitId, diffContainsBcIdentifier,
                                                             diffLinesContainBcIdentifier, processingTimeout);
                                                 }
                                             } catch (Exception ex) {
@@ -647,7 +733,7 @@ public class Experiments {
                                             clientMainHasCommits,
                                             clientMasterHasCommits, apiHasBcs, commitId, commitHasJavaFiles,
                                             javaFileHasImports,
-                                            javaFileHasImportsOfFileContainingBc, bcIdentifier, bcCommitId,
+                                            javaFileHasImportsOfFileContainingBc, bcIdentifier, bcCategory, bcCommitId,
                                             diffContainsBcIdentifier, diffLinesContainBcIdentifier, processingTimeout);
                                 }
                             } else {
@@ -655,14 +741,14 @@ public class Experiments {
                                         clientMainHasCommits,
                                         clientMasterHasCommits, apiHasBcs, commitId, commitHasJavaFiles,
                                         javaFileHasImports,
-                                        javaFileHasImportsOfFileContainingBc, bcIdentifier, bcCommitId,
+                                        javaFileHasImportsOfFileContainingBc, bcIdentifier, bcCategory, bcCommitId,
                                         diffContainsBcIdentifier, diffLinesContainBcIdentifier, processingTimeout);
                             }
                         }
                     } else {
                         putMapInResultList(migrationDetectionResults, clientNameCsv, apiNameCsv, clientMainHasCommits,
                                 clientMasterHasCommits, apiHasBcs, commitId, commitHasJavaFiles, javaFileHasImports,
-                                javaFileHasImportsOfFileContainingBc, bcIdentifier, bcCommitId,
+                                javaFileHasImportsOfFileContainingBc, bcIdentifier, bcCategory, bcCommitId,
                                 diffContainsBcIdentifier, diffLinesContainBcIdentifier, processingTimeout);
                     }
                     clientCommitCounter++;
@@ -678,21 +764,48 @@ public class Experiments {
                 // Initial case if no BCs in this API for this client
                 putMapInResultList(migrationDetectionResults, clientNameCsv, apiNameCsv, clientMainHasCommits,
                         clientMasterHasCommits, apiHasBcs, commitId, commitHasJavaFiles, javaFileHasImports,
-                        javaFileHasImportsOfFileContainingBc, bcIdentifier, bcCommitId, diffContainsBcIdentifier,
+                        javaFileHasImportsOfFileContainingBc, bcIdentifier, bcCategory, bcCommitId,
+                        diffContainsBcIdentifier,
                         diffLinesContainBcIdentifier, processingTimeout);
             }
 
             if (migrationDetectionResults.size() == 0) {
                 putMapInResultList(migrationDetectionResults, clientNameCsv, apiNameCsv, clientMainHasCommits,
                         clientMasterHasCommits, apiHasBcs, commitId, commitHasJavaFiles, javaFileHasImports,
-                        javaFileHasImportsOfFileContainingBc, bcIdentifier, bcCommitId, diffContainsBcIdentifier,
+                        javaFileHasImportsOfFileContainingBc, bcIdentifier, bcCategory, bcCommitId,
+                        diffContainsBcIdentifier,
                         diffLinesContainBcIdentifier, processingTimeout);
             }
 
             outputListMapToFile(System.currentTimeMillis() / 1000L, projectName, migrationDetectionResults);
-        } catch (Exception ex) {
+        } catch (Throwable ex) {
             try {
-                Logger.info(projectName, ex.getMessage());
+                Logger.error(projectName, ex.getMessage());
+
+                // Log at least one result line in case of heap memory error
+                putMapInResultList(migrationDetectionResults, clientNameCsv, apiNameCsv, clientMainHasCommits,
+                        clientMasterHasCommits, apiHasBcs, commitId, commitHasJavaFiles, javaFileHasImports,
+                        javaFileHasImportsOfFileContainingBc, bcIdentifier, bcCategory, bcCommitId,
+                        diffContainsBcIdentifier,
+                        diffLinesContainBcIdentifier, true);
+
+                try {
+                    outputListMapToFile(System.currentTimeMillis() / 1000L, projectName,
+                            migrationDetectionResults);
+                } catch (Throwable e) {
+                    try {
+                        List<String> msgList = new ArrayList<String>();
+                        msgList.add(e.getMessage());
+
+                        UtilFile.writeFile(UtilFile.getAbsolutePath(
+                                DIR_OUTPUT_MIGRATIONS + "/POTENTIAL_HEAP_ERROR" + projectName + "_"
+                                        + ".csv"),
+                                msgList);
+                    } catch (Exception ex2) {
+                        Logger.info("Migration result writefile", ex2.getMessage());
+                    }
+                }
+
             } catch (IllegalStateException e) {
                 // Ignore (comes from java 12+)
             }
@@ -876,10 +989,15 @@ public class Experiments {
     private static void putMapInResultList(List<Map<String, String>> resultList, String clientName, String apiName,
             boolean clientMainHasCommits, boolean clientMasterHasCommits,
             boolean apiHasBcs, String clientCommitId, boolean clientCommitHasJavaFiles, boolean javaFileHasImports,
-            boolean javaFileHasImportsOfFileContainingBc, String bcIdentifier,
+            boolean javaFileHasImportsOfFileContainingBc, String bcIdentifier, String bcCategory,
             String bcCommitId, boolean diffContainsBcIdentifier, boolean diffLinesContainBcIdentifier,
             boolean processingTimeout) {
         Map<String, String> mapToAdd = new HashMap<String, String>();
+
+        if (!diffContainsBcIdentifier
+                && diffLinesContainBcIdentifier) {
+            System.out.println("WTF");
+        }
 
         mapToAdd.put(CSV_HEADER_CLIENT_NAME, clientName);
         mapToAdd.put(CSV_HEADER_API_NAME, apiName);
@@ -889,8 +1007,10 @@ public class Experiments {
         mapToAdd.put(CSV_HEADER_CLIENT_COMMIT_ID, clientCommitId);
         mapToAdd.put(CSV_HEADER_CLIENT_COMMIT_HAS_JAVA_FILES, (clientCommitHasJavaFiles ? "true" : "false"));
         mapToAdd.put(CSV_HEADER_CLIENT_HAS_IMPORTS, (javaFileHasImports ? "true" : "false"));
-        mapToAdd.put(CSV_HEADER_CLIENT_HAS_IMPORTS, (javaFileHasImportsOfFileContainingBc ? "true" : "false"));
+        mapToAdd.put(
+                CSV_HEADER_CLIENT_HAS_IMPORTS_OF_BCFILE, (javaFileHasImportsOfFileContainingBc ? "true" : "false"));
         mapToAdd.put(CSV_HEADER_CLIENT_BC_ID, bcIdentifier);
+        mapToAdd.put(CSV_HEADER_BC_CATEGORY, bcCategory);
         mapToAdd.put(CSV_HEADER_CLIENT_BC_COMMIT_ID, bcCommitId);
         mapToAdd.put(CSV_HEADER_CLIENT_DIFF_CONTAINS_BC_ID, (diffContainsBcIdentifier ? "true" : "false"));
         mapToAdd.put(CSV_HEADER_CLIENT_DIFF_LINES_CONTAINS_BC_ID,
@@ -903,8 +1023,7 @@ public class Experiments {
     private void outputListMapToFile(long time, String clientName, List<Map<String, String>> result) {
         List<String> csvList = new ArrayList<String>();
 
-        csvList.add(CSV_HEADER_API_HAS_BCS + ";" +
-                CSV_HEADER_CLIENT_NAME + ";" +
+        csvList.add(CSV_HEADER_CLIENT_NAME + ";" +
                 CSV_HEADER_API_NAME + ";" +
                 CSV_HEADER_CLIENT_MAIN_HAS_COMMITS + ";" +
                 CSV_HEADER_CLIENT_MASTER_HAS_COMMITS + ";" +
@@ -912,16 +1031,16 @@ public class Experiments {
                 CSV_HEADER_CLIENT_COMMIT_ID + ";" +
                 CSV_HEADER_CLIENT_COMMIT_HAS_JAVA_FILES + ";" +
                 CSV_HEADER_CLIENT_HAS_IMPORTS + ";" +
-                CSV_HEADER_CLIENT_HAS_IMPORTS + ";" +
+                CSV_HEADER_CLIENT_HAS_IMPORTS_OF_BCFILE + ";" +
                 CSV_HEADER_CLIENT_BC_ID + ";" +
+                CSV_HEADER_BC_CATEGORY + ";" +
                 CSV_HEADER_CLIENT_BC_COMMIT_ID + ";" +
                 CSV_HEADER_CLIENT_DIFF_CONTAINS_BC_ID + ";" +
                 CSV_HEADER_CLIENT_DIFF_LINES_CONTAINS_BC_ID + ";" +
                 CSV_HEADER_CLIENT_PROCESSING_TIMEOUT);
 
         for (Map<String, String> resultMap : result) {
-            csvList.add(resultMap.get(CSV_HEADER_API_HAS_BCS) + ";" +
-                    resultMap.get(CSV_HEADER_CLIENT_NAME) + ";" +
+            csvList.add(resultMap.get(CSV_HEADER_CLIENT_NAME) + ";" +
                     resultMap.get(CSV_HEADER_API_NAME) + ";" +
                     resultMap.get(CSV_HEADER_CLIENT_MAIN_HAS_COMMITS) + ";" +
                     resultMap.get(CSV_HEADER_CLIENT_MASTER_HAS_COMMITS) + ";" +
@@ -929,8 +1048,11 @@ public class Experiments {
                     resultMap.get(CSV_HEADER_CLIENT_COMMIT_ID) + ";" +
                     resultMap.get(CSV_HEADER_CLIENT_COMMIT_HAS_JAVA_FILES) + ";" +
                     resultMap.get(CSV_HEADER_CLIENT_HAS_IMPORTS) + ";" +
-                    resultMap.get(CSV_HEADER_CLIENT_HAS_IMPORTS) + ";" +
+                    resultMap.get(
+                            CSV_HEADER_CLIENT_HAS_IMPORTS_OF_BCFILE)
+                    + ";" +
                     resultMap.get(CSV_HEADER_CLIENT_BC_ID) + ";" +
+                    resultMap.get(CSV_HEADER_BC_CATEGORY) + ";" +
                     resultMap.get(CSV_HEADER_CLIENT_BC_COMMIT_ID) + ";" +
                     resultMap.get(CSV_HEADER_CLIENT_DIFF_CONTAINS_BC_ID) + ";" +
                     resultMap.get(CSV_HEADER_CLIENT_DIFF_LINES_CONTAINS_BC_ID) + ";" +
@@ -943,7 +1065,7 @@ public class Experiments {
         csvList.addAll(csvSet);
 
         try {
-            UtilFile.writeFile(UtilFile.getAbsolutePath("dataset/Output/HopefullyFinal/" + time + "_" + clientName + "_"
+            UtilFile.writeFile(UtilFile.getAbsolutePath(DIR_OUTPUT_MIGRATIONS + "/" + time + "_" + clientName + "_"
                     + ".csv"), csvList);
         } catch (Exception ex) {
             Logger.info("Migration result writefile", ex.getMessage());
