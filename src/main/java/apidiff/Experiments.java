@@ -20,6 +20,7 @@ import org.eclipse.jgit.diff.DiffEntry;
 import org.eclipse.jgit.diff.DiffFormatter;
 import org.eclipse.jgit.diff.RawTextComparator;
 import org.eclipse.jgit.dircache.DirCacheIterator;
+import org.eclipse.jgit.errors.MissingObjectException;
 import org.eclipse.jgit.lib.ObjectId;
 import org.eclipse.jgit.lib.ObjectLoader;
 import org.eclipse.jgit.lib.Repository;
@@ -153,7 +154,7 @@ public class Experiments {
                     }
                 } catch (Exception ex) {
                     try {
-                        Logger.info(githubLinks, ex.getMessage());
+                        Logger.error("gitLinkSharedMap", ex.getMessage());
                     } catch (Exception probablyIllegalStateException) {
                         // Illegal reflection call from java 12
                     }
@@ -312,6 +313,8 @@ public class Experiments {
 
             for (File usagesFile : fileList) {
                 if (usagesFile.isFile()) {
+                    Logger.info("fileList loop", usagesFile.getName());
+
                     // apiName is the 5th element in the filename by construction
                     String apiName = usagesFile.getName().split("_")[API_NAME_POSITION];
                     // apiOutputTime is the 1st element in the filename by construction
@@ -384,18 +387,18 @@ public class Experiments {
         // Result parameters for final CSV file
         String clientNameCsv = projectName;
         String apiNameCsv = apiName;
-        boolean clientMainHasCommits = false;
-        boolean clientMasterHasCommits = false;
-        boolean apiHasBcs = false;
-        String commitId = "";
-        boolean commitHasJavaFiles = false;
-        boolean javaFileHasImports = false;
-        boolean javaFileHasImportsOfFileContainingBc = false;
-        String bcIdentifier = "";
-        String bcCommitId = "";
-        String bcCategory = "";
-        boolean diffContainsBcIdentifier = false;
-        boolean diffLinesContainBcIdentifier = false;
+        // boolean clientMainHasCommits = false;
+        // boolean clientMasterHasCommits = false;
+        // boolean apiHasBcs = false;
+        // String commitId = "";
+        // boolean commitHasJavaFiles = false;
+        // boolean javaFileHasImports = false;
+        // boolean javaFileHasImportsOfFileContainingBc = false;
+        // String bcIdentifier = "";
+        // String bcCommitId = "";
+        // String bcCategory = "";
+        // boolean diffContainsBcIdentifier = false;
+        // boolean diffLinesContainBcIdentifier = false;
         boolean processingTimeout = false;
 
         // Maps to be logged as final results
@@ -412,6 +415,9 @@ public class Experiments {
                     UtilFile.getAbsolutePath(DIR_CLIENTS_DATASET), projectName, clientGitUrl);
             RevWalk revWalk = service.createAllRevsWalk(repository, "main");
 
+            boolean clientMainHasCommits = false;
+            boolean clientMasterHasCommits = false;
+
             int nbCommitsInBranch = nbCommitsInBranch(service, repository, "main");
             if (nbCommitsInBranch <= 0) {
                 revWalk = service.createAllRevsWalk(repository, "master");
@@ -421,6 +427,8 @@ public class Experiments {
             } else {
                 clientMainHasCommits = true;
             }
+
+            Logger.info("Usages API", apiName);
 
             // restrict processing time to apidiff.TIME_TO_PROCESS_SECONDS_LIMIT
             long unixTimeStart = System.currentTimeMillis() / 1000L;
@@ -471,35 +479,19 @@ public class Experiments {
             apiName = apiMappedLink;
 
             // TODO: comment
-            apiHasBcs = (bcsMapList.size() > 0);
+            boolean apiHasBcs = (bcsMapList.size() > 0);
 
             int clientCommitCounter = 0;
 
-            // putMapInResultList(migrationDetectionResults, clientNameCsv, apiNameCsv,
-            // clientMainHasCommits,
-            // clientMasterHasCommits, apiHasBcs, commitId, commitHasJavaFiles,
-            // javaFileHasImports,
-            // javaFileHasImportsOfFileContainingBc, bcIdentifier, bcCommitId,
-            // diffContainsBcIdentifier,
-            // diffLinesContainBcIdentifier);
-
-            // Only process commits if apiHasBcs == true (...?)
             if (apiHasBcs) {
                 Iterator<RevCommit> i = revWalk.iterator();
                 while (i.hasNext()) {
                     RevCommit currentClientCommit = i.next();
 
-                    commitId = currentClientCommit.toString();
+                    String commitId = currentClientCommit.toString();
 
                     // Granularity: commit time
                     int clientCommitTime = currentClientCommit.getCommitTime();
-
-                    // TODO: Probably not needed anymore
-                    // List<String> javaFileNamesInCommit = getJavaFileNamesInCommit(repository,
-                    // currentClientCommit); // get
-                    // files
-                    // in
-                    // commit
 
                     List<Pair<String, String>> diffsForFilesInCommit = getAllDiffsWithParentFromCommit(repository,
                             currentClientCommit);
@@ -524,6 +516,7 @@ public class Experiments {
                     }
 
                     // TODO: comment
+                    boolean commitHasJavaFiles = false;
                     if (commitHasJavaFiles = (javaFileNamesAndContentInCommit.size() > 0)) {
                         for (Pair<String, String> javaFileNameAndContent : javaFileNamesAndContentInCommit) {
 
@@ -533,18 +526,13 @@ public class Experiments {
                             List<String> imports = ImportMatching.getImports(codeContent);
 
                             // TODO: comment
+                            boolean javaFileHasImports = false;
                             if (javaFileHasImports = (imports.size() > 0)) {
                                 for (String importStr : imports) {
                                     for (Map<String, String> bcMap : BcTimeFiltered) {
                                         String path = bcMap.get("Path");
                                         if (path.contains(importStr.replace("*", ""))) {
                                             importBCs.add(bcMap);
-
-                                            try {
-                                                Logger.info("import matcher", path);
-                                            } catch (IllegalStateException e) {
-                                                // Ignore (comes from java 12+)
-                                            }
                                         }
                                     }
                                 }
@@ -556,12 +544,13 @@ public class Experiments {
                                 }
 
                                 // TODO: comment
+                                boolean javaFileHasImportsOfFileContainingBc = false;
                                 if (javaFileHasImportsOfFileContainingBc = (matchedImports.size() > 0)) {
                                     String diffsForFile = "";
                                     for (Pair<String, String> diffs : diffsForFilesInCommit) {
                                         if (diffs.getKey().equals(javaFileNameAndContent.getKey())) {
                                             diffsForFile = diffs.getValue();
-                                            // TODO: check influence of break here,may need append if more that one
+                                            // TODO: check influence of break here,may need append if more than one
                                             // diffs
                                             // per file
                                             break;
@@ -571,41 +560,17 @@ public class Experiments {
                                     if (diffsForFile.length() > 0) {
                                         for (Map<String, String> bcMap : importBCs) {
                                             try {
-                                                bcCommitId = bcMap.get("RevCommit")
+                                                String bcCommitId = bcMap.get("RevCommit")
                                                         .split(" ")[BC_REV_COMMIT_ID_POSITION];
 
-                                                bcCategory = bcMap.get("Category");
+                                                String bcCategory = bcMap.get("Category");
 
                                                 TypeDeclaration typeDec = JavaParserUtility.parseExpression(
-                                                        // "public class X {" + bcMap.get("Element") + "{}}",
-                                                        // false);
                                                         bcMap.get("Element") + ";", false);
 
-                                                // String methodName = bcMap.get("Element");
                                                 String element = "";
 
-                                                // typeDec.accept(new ASTVisitor(true) {
-                                                // @Override
-                                                // public boolean visit(MethodDeclaration node) {
-                                                // System.out.println(node.getName().toString());
-                                                // node.getName().toString();
-                                                // return false;
-                                                // }
-                                                // });
-
-                                                // TODO: if/else for method, field, type change
                                                 List<Object> bodyDec = typeDec.bodyDeclarations();
-                                                // if (bodyDec.size() > 0
-                                                // && bodyDec.getFirst() instanceof MethodDeclaration) {
-                                                // element = ((MethodDeclaration)
-                                                // typeDec.bodyDeclarations().getFirst())
-                                                // .getName()
-                                                // .toString();
-                                                // if (element.equals("setCenterText")) {
-                                                // System.out.println(element);
-                                                // // System.out.println(diffsForFile);
-                                                // }
-                                                // }
 
                                                 if (bodyDec.size() > 0) {
                                                     Object dec = bodyDec.getFirst();
@@ -628,11 +593,12 @@ public class Experiments {
                                                     }
                                                 }
 
-                                                bcIdentifier = element;
+                                                String bcIdentifier = element;
                                                 // TODO: comment
                                                 // We don't want to check if "" (empty string) belongs to the files,
                                                 // always true
                                                 if (element.length() > 0) {
+                                                    boolean diffContainsBcIdentifier = false;
                                                     if (diffContainsBcIdentifier = (diffsForFile.contains(element))) {
 
                                                         String[] relevantLines = diffsForFile
@@ -659,44 +625,21 @@ public class Experiments {
                                                             }
                                                         }
 
-                                                        // List<Token> tokenList = JavaParserUtility
-                                                        // // .tokensToAST("public class X {" + bcMap.get("Element") +
-                                                        // "{}}",
-                                                        // cUnit);
-                                                        // .tokensToAST(bcMap.get("Element") + ";", cUnit);
-                                                        // if (diffsForFile.contains(element)) {
-                                                        // // System.out.println("match");
-                                                        // // log migration
-                                                        // List<String> diffsAsList = new ArrayList<String>();
-                                                        // diffsAsList.add(diffsForFile);
+                                                        boolean diffLinesContainBcIdentifier = (matchedLines
+                                                                .size() > 0);
 
-                                                        // try {
-                                                        // UtilFile.writeFile(
-                                                        // migrationLogOutputDir + "/" + apiName + "_" + projectName +
-                                                        // "_"
-                                                        // + potentialMigrationCounter + ".txt",
-                                                        // diffsAsList);
-                                                        // potentialMigrationCounter++;
-                                                        // } catch (Exception ex) {
-                                                        // try {
-                                                        // Logger.info(projectName, ex.getMessage());
-                                                        // } catch (IllegalStateException e) {
-                                                        // // Ignore (comes from java 12+)
-                                                        // }
-                                                        // }
-                                                        // }
+                                                        putMapInResultList(migrationDetectionResults, clientNameCsv,
+                                                                apiNameCsv, clientMainHasCommits,
+                                                                clientMasterHasCommits,
+                                                                apiHasBcs, commitId, commitHasJavaFiles,
+                                                                javaFileHasImports,
+                                                                javaFileHasImportsOfFileContainingBc, bcIdentifier,
+                                                                bcCategory, bcCommitId, diffContainsBcIdentifier,
+                                                                diffLinesContainBcIdentifier, false);
 
-                                                        if (diffLinesContainBcIdentifier = matchedLines.size() > 0) {
-                                                            putMapInResultList(migrationDetectionResults, clientNameCsv,
-                                                                    apiNameCsv, clientMainHasCommits,
-                                                                    clientMasterHasCommits,
-                                                                    apiHasBcs, commitId, commitHasJavaFiles,
-                                                                    javaFileHasImports,
-                                                                    javaFileHasImportsOfFileContainingBc, bcIdentifier,
-                                                                    bcCategory, bcCommitId, diffContainsBcIdentifier,
-                                                                    diffLinesContainBcIdentifier, processingTimeout);
-                                                            diffLinesContainBcIdentifier = false;
-                                                        }
+                                                        // Reset logging variables
+                                                        // diffContainsBcIdentifier = false;
+                                                        // diffLinesContainBcIdentifier = false;
                                                     } else {
                                                         putMapInResultList(migrationDetectionResults, clientNameCsv,
                                                                 apiNameCsv, clientMainHasCommits,
@@ -705,7 +648,7 @@ public class Experiments {
                                                                 javaFileHasImports,
                                                                 javaFileHasImportsOfFileContainingBc, bcIdentifier,
                                                                 bcCategory, bcCommitId, diffContainsBcIdentifier,
-                                                                diffLinesContainBcIdentifier, processingTimeout);
+                                                                false, false);
                                                     }
                                                 } else {
                                                     putMapInResultList(migrationDetectionResults, clientNameCsv,
@@ -714,14 +657,17 @@ public class Experiments {
                                                             apiHasBcs, commitId, commitHasJavaFiles,
                                                             javaFileHasImports,
                                                             javaFileHasImportsOfFileContainingBc, bcIdentifier,
-                                                            bcCategory, bcCommitId, diffContainsBcIdentifier,
-                                                            diffLinesContainBcIdentifier, processingTimeout);
+                                                            bcCategory, bcCommitId, false,
+                                                            false, false);
                                                 }
                                             } catch (Exception ex) {
-                                                try {
-                                                    Logger.info(projectName, ex.getMessage());
-                                                } catch (IllegalStateException e) {
-                                                    // Ignore (comes from java 12+)
+                                                if (!(ex instanceof MissingObjectException)
+                                                        && ex.getMessage() != null) {
+                                                    try {
+                                                        Logger.info(projectName, ex.getMessage());
+                                                    } catch (IllegalStateException e) {
+                                                        // Ignore (comes from java 12+)
+                                                    }
                                                 }
                                             }
                                         }
@@ -733,23 +679,23 @@ public class Experiments {
                                             clientMainHasCommits,
                                             clientMasterHasCommits, apiHasBcs, commitId, commitHasJavaFiles,
                                             javaFileHasImports,
-                                            javaFileHasImportsOfFileContainingBc, bcIdentifier, bcCategory, bcCommitId,
-                                            diffContainsBcIdentifier, diffLinesContainBcIdentifier, processingTimeout);
+                                            javaFileHasImportsOfFileContainingBc, "", "", "",
+                                            false, false, false);
                                 }
                             } else {
                                 putMapInResultList(migrationDetectionResults, clientNameCsv, apiNameCsv,
                                         clientMainHasCommits,
                                         clientMasterHasCommits, apiHasBcs, commitId, commitHasJavaFiles,
                                         javaFileHasImports,
-                                        javaFileHasImportsOfFileContainingBc, bcIdentifier, bcCategory, bcCommitId,
-                                        diffContainsBcIdentifier, diffLinesContainBcIdentifier, processingTimeout);
+                                        false, "", "", "",
+                                        false, false, false);
                             }
                         }
                     } else {
                         putMapInResultList(migrationDetectionResults, clientNameCsv, apiNameCsv, clientMainHasCommits,
-                                clientMasterHasCommits, apiHasBcs, commitId, commitHasJavaFiles, javaFileHasImports,
-                                javaFileHasImportsOfFileContainingBc, bcIdentifier, bcCategory, bcCommitId,
-                                diffContainsBcIdentifier, diffLinesContainBcIdentifier, processingTimeout);
+                                clientMasterHasCommits, apiHasBcs, commitId, commitHasJavaFiles, false,
+                                false, "", "", "",
+                                false, false, false);
                     }
                     clientCommitCounter++;
                     // Temporary (?) restriction to avoid "endless" processing of huge projects
@@ -759,22 +705,27 @@ public class Experiments {
                         processingTimeout = true;
                         break;
                     }
+
+                    // Reset
+                    commitId = "";
                 }
             } else {
                 // Initial case if no BCs in this API for this client
                 putMapInResultList(migrationDetectionResults, clientNameCsv, apiNameCsv, clientMainHasCommits,
-                        clientMasterHasCommits, apiHasBcs, commitId, commitHasJavaFiles, javaFileHasImports,
-                        javaFileHasImportsOfFileContainingBc, bcIdentifier, bcCategory, bcCommitId,
-                        diffContainsBcIdentifier,
-                        diffLinesContainBcIdentifier, processingTimeout);
+                        clientMasterHasCommits, apiHasBcs, "", false,
+                        false,
+                        false, "", "", "",
+                        false,
+                        false, processingTimeout);
             }
 
             if (migrationDetectionResults.size() == 0) {
                 putMapInResultList(migrationDetectionResults, clientNameCsv, apiNameCsv, clientMainHasCommits,
-                        clientMasterHasCommits, apiHasBcs, commitId, commitHasJavaFiles, javaFileHasImports,
-                        javaFileHasImportsOfFileContainingBc, bcIdentifier, bcCategory, bcCommitId,
-                        diffContainsBcIdentifier,
-                        diffLinesContainBcIdentifier, processingTimeout);
+                        clientMasterHasCommits, apiHasBcs, "", false,
+                        false,
+                        false, "", "", "",
+                        false,
+                        false, processingTimeout);
             }
 
             outputListMapToFile(System.currentTimeMillis() / 1000L, projectName, migrationDetectionResults);
@@ -783,11 +734,12 @@ public class Experiments {
                 Logger.error(projectName, ex.getMessage());
 
                 // Log at least one result line in case of heap memory error
-                putMapInResultList(migrationDetectionResults, clientNameCsv, apiNameCsv, clientMainHasCommits,
-                        clientMasterHasCommits, apiHasBcs, commitId, commitHasJavaFiles, javaFileHasImports,
-                        javaFileHasImportsOfFileContainingBc, bcIdentifier, bcCategory, bcCommitId,
-                        diffContainsBcIdentifier,
-                        diffLinesContainBcIdentifier, true);
+                putMapInResultList(migrationDetectionResults, clientNameCsv, apiNameCsv, false,
+                        false, false, "", false,
+                        false,
+                        false, "", "", "",
+                        false,
+                        false, true);
 
                 try {
                     outputListMapToFile(System.currentTimeMillis() / 1000L, projectName,
@@ -845,7 +797,7 @@ public class Experiments {
             rw.close();
             df.close();
         } catch (Exception ex) {
-            Logger.info(ex, ex.getMessage());
+            Logger.info("getAllDiffsWithParentFromCommit", ex.getMessage());
         }
 
         return pathsWithDiffs;
@@ -874,7 +826,7 @@ public class Experiments {
             rw.close();
             df.close();
         } catch (Exception ex) {
-            Logger.info(ex, ex.getMessage());
+            Logger.info("getJavaFileNamesInCommit", ex.getMessage());
         }
 
         return fileNames;
@@ -898,16 +850,18 @@ public class Experiments {
 
                         filesContent.add(Pair.of(tw.getPathString(), content));
                     } catch (Exception e) {
-                        try {
-                            Logger.info(e, e.getMessage());
-                        } catch (Exception probablyIllegalStateException) {
-                            // Illegal reflection call from java 12
+                        if (!(e instanceof MissingObjectException)) {
+                            try {
+                                Logger.info("getJavaFileContentInCommitWithTreeWalk, while", e.getMessage());
+                            } catch (Exception probablyIllegalStateException) {
+                                // Illegal reflection call from java 12
+                            }
                         }
                     }
                 }
             }
         } catch (Exception ex) {
-            Logger.info(ex, ex.getMessage());
+            Logger.info("getJavaFileContentInCommitWithTreeWalk", ex.getMessage());
         }
         rw.close();
 
@@ -924,10 +878,10 @@ public class Experiments {
                 // this.logger.info("Current commits: " + nbTotCommits);
                 dummyCounter.next();
             }
-            Logger.info(this, "Total commits: " + nbTotCommits);
+            Logger.info("nbCommitsInBranch", "Total commits: " + nbTotCommits);
         } catch (Exception ex) {
             try {
-                Logger.info(ex, ex.getMessage());
+                Logger.error("nbCommitsInBranch", ex.getMessage());
             } catch (Exception probablyIllegalStateException) {
                 // Illegal reflection call from java 12
             }
